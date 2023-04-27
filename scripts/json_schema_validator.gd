@@ -1,7 +1,7 @@
 # JSON Schema main script
 # Inherits from Reference for easy use
 
-class_name JSONSchema extends Reference 
+class_name JSONSchema extends Reference
 
 const DEF_KEY_NAME = "schema root"
 const DEF_ERROR_STRING = "##error##"
@@ -79,11 +79,11 @@ const ERR_WRONG_PATTERN = "String '%s' does not match its corresponding pattern"
 # If all validation checks passes, this return empty String
 func validate(json_data : String, schema: String) -> String:
 	var error : String = ""
-	
+
 	# General validation input data as JSON file
 	error = validate_json(json_data)
 	if error: return ERR_INVALID_JSON_EXT % error
-	
+
 	# General validation input schema as JSONSchema file
 	error = validate_json(schema)
 	if error: return ERR_WRONG_SCHEMA_GEN + error
@@ -92,7 +92,7 @@ func validate(json_data : String, schema: String) -> String:
 		TYPE_BOOL:
 			if !parsed_schema:
 				return ERR_INVALID_JSON_GEN % ERR_SCHEMA_FALSE
-			else: 
+			else:
 				return ""
 		TYPE_DICTIONARY:
 			if parsed_schema.empty():
@@ -100,10 +100,10 @@ func validate(json_data : String, schema: String) -> String:
 			elif parsed_schema.keys().size() > 0 && !parsed_schema.has(JSKW_TYPE):
 				return ERR_WRONG_SCHEMA_TYPE
 		_: return ERR_WRONG_SCHEMA_TYPE
-	
+
 	# All inputs seems valid. Begin type validation
 	error = _type_selection(json_data, parsed_schema)
-	
+
 	# Normal return empty string, meaning OK
 	return error
 
@@ -111,14 +111,13 @@ func _to_string():
 	return "[JSONSchema:%d]" % get_instance_id()
 
 # TODO: title, description, default, examples, $comment, enum, const
-
 func _type_selection(json_data: String, schema: Dictionary, key: String = DEF_KEY_NAME) -> String:
 	var typearr : Array = _var_to_array(schema.type)
 	var parsed_data = parse_json(json_data)
 	var error : String = ERR_TYPE_MISMATCH_GEN % [typearr, key]
 	for type in typearr:
 		match type:
-			JST_ARRAY: 
+			JST_ARRAY:
 				if typeof(parsed_data) == TYPE_ARRAY:
 					error = _validate_array(parsed_data, schema, key)
 #				else:
@@ -128,7 +127,7 @@ func _type_selection(json_data: String, schema: Dictionary, key: String = DEF_KE
 					return ERR_TYPE_MISMATCH_GEN % [[JST_BOOLEAN], key]
 				else:
 					error = ""
-			JST_INTEGER: 
+			JST_INTEGER:
 				if typeof(parsed_data) == TYPE_INT:
 					error = _validate_integer(parsed_data, schema, key)
 				if typeof(parsed_data) == TYPE_REAL && parsed_data == int(parsed_data):
@@ -138,12 +137,12 @@ func _type_selection(json_data: String, schema: Dictionary, key: String = DEF_KE
 					return ERR_TYPE_MISMATCH_GEN % [[JST_NULL], key]
 				else:
 					error = ""
-			JST_NUMBER: 
+			JST_NUMBER:
 				if typeof(parsed_data) == TYPE_REAL:
 					error = _validate_number(parsed_data, schema, key)
 #				else:
 #					error = ERR_TYPE_MISMATCH_GEN % [[JST_NUMBER], key]
-			JST_OBJECT: 
+			JST_OBJECT:
 				if typeof(parsed_data) == TYPE_DICTIONARY:
 					error = _validate_object(parsed_data, schema, key)
 #				else:
@@ -154,7 +153,7 @@ func _type_selection(json_data: String, schema: Dictionary, key: String = DEF_KE
 #				else:
 #					error = ERR_TYPE_MISMATCH_GEN % [[JST_STRING], key]
 	return error
-	
+
 
 func _var_to_array(variant) -> Array:
 	var result : Array = []
@@ -168,22 +167,22 @@ func _validate_array(input_data: Array, input_schema: Dictionary, property_name:
 	# TODO: contains additionalItems minItems maxItems uniqueItems
 	var error : String = ""
 	var items_array : Array
-	
+
 	#'items' must be object or Array of objects
 	if input_schema.has(JSKW_ITEMS):
 		items_array = _var_to_array(input_schema.items)
 		for item in items_array:
 			if typeof(item) != TYPE_DICTIONARY:
 				return ERR_WRONG_SHEMA_NOTA % [property_name, JSKW_ITEMS, JST_OBJECT]
-	
-	# Check every item of input Array on 
+
+	# Check every item of input Array on
 	for idx in input_data.size():
 		var suberror : Array = []
 		for subschema in items_array:
 			suberror.append(_type_selection(JSON.print(input_data[idx]), subschema, property_name+"["+String(idx)+"]"))
 		if suberror.find("") < 0: # At least one returned string must be correct (empty). If no one present, it's wrong.
 			return ERR_INVALID_JSON_GEN % String(suberror) # Then we post all suberror array for a maintenance.
-	
+
 	return error
 
 func _validate_boolean(input_data: bool, input_schema: Dictionary, property_name: String = DEF_KEY_NAME) -> String:
@@ -199,21 +198,23 @@ func _validate_null(input_data, input_schema: Dictionary, property_name: String 
 	return ""
 
 func _validate_number(input_data: float, input_schema: Dictionary, property_name: String = DEF_KEY_NAME) -> String:
-	
+
 	var types: Array = _var_to_array(input_schema.type)
 	# integer mode turns on only if types has integer and has not number
 	var integer_mode: bool = types.has(JST_INTEGER) && !types.has(JST_NUMBER)
-	
+
 	# processing multiple check
 	if input_schema.has(JSKW_MULT_OF):
 		var mult = float(input_schema[JSKW_MULT_OF])
 		mult = int(mult) if integer_mode else mult
-		if fmod(input_data, mult) != 0:
+		var mod := fmod(input_data, mult)
+		var is_zero := is_zero_approx(mod)
+		if not is_zero:
 			if integer_mode:
 				return ERR_MULT_D % [property_name, input_data, mult]
 			else:
 				return ERR_MULT_F % [property_name, input_data, mult]
-	
+
 	# processing minimum check
 	if input_schema.has(JSKW_MINIMUM):
 		var minimum = float(input_schema[JSKW_MINIMUM])
@@ -223,7 +224,7 @@ func _validate_number(input_data: float, input_schema: Dictionary, property_name
 				return ERR_RANGE_D % [property_name, input_data, JSM_GREATER_EQ, minimum]
 			else:
 				return ERR_RANGE_F % [property_name, input_data, JSM_GREATER_EQ, minimum]
-	
+
 	# processing exclusive minimum check
 	if input_schema.has(JSKW_MIN_EX):
 		var minimum = float(input_schema[JSKW_MIN_EX])
@@ -233,7 +234,7 @@ func _validate_number(input_data: float, input_schema: Dictionary, property_name
 				return ERR_RANGE_D % [property_name, input_data, JSM_GREATER, minimum]
 			else:
 				return ERR_RANGE_F % [property_name, input_data, JSM_GREATER, minimum]
-	
+
 	# processing maximum check
 	if input_schema.has(JSKW_MAXIMUM):
 		var maximum = float(input_schema[JSKW_MAXIMUM])
@@ -243,7 +244,7 @@ func _validate_number(input_data: float, input_schema: Dictionary, property_name
 				return ERR_RANGE_D % [property_name, input_data, JSM_LESS_EQ, maximum]
 			else:
 				return ERR_RANGE_F % [property_name, input_data, JSM_LESS_EQ, maximum]
-	
+
 	# processing exclusive minimum check
 	if input_schema.has(JSKW_MAX_EX):
 		var maximum = float(input_schema[JSKW_MAX_EX])
@@ -253,7 +254,7 @@ func _validate_number(input_data: float, input_schema: Dictionary, property_name
 				return ERR_RANGE_D % [property_name, input_data, JSM_LESS, maximum]
 			else:
 				return ERR_RANGE_F % [property_name, input_data, JSM_LESS, maximum]
-	
+
 	return ""
 
 func _validate_object(input_data: Dictionary, input_schema: Dictionary, property_name: String = DEF_KEY_NAME) -> String:
@@ -290,17 +291,17 @@ func _validate_object(input_data: Dictionary, input_schema: Dictionary, property
 
 	# Process properties
 	if input_schema.has(JSKW_PROP):
-		
+
 		# Process required
 		if input_schema.has(JSKW_REQ):
 			if typeof(input_schema.required) != TYPE_ARRAY: return ERR_REQ_PROP_GEN % property_name
 			for i in input_schema.required:
 				if !input_data.has(i): return ERR_REQ_PROP_MISSING % [i, property_name]
-		
+
 		# Continue validating schema subelements
 		if typeof(input_schema.properties) != TYPE_DICTIONARY:
 			return ERR_WRONG_SCHEMA_GEN + ERR_TYPE_MISMATCH_GEN % [JSM_OBJ_DICT, property_name]
-		
+
 		# Process property items
 		for key in input_schema.properties:
 			if !input_schema.properties[key].has(JSKW_TYPE):
@@ -310,7 +311,7 @@ func _validate_object(input_data: Dictionary, input_schema: Dictionary, property
 			else:
 				pass
 			if error: return error
-	
+
 	# Process additional properties
 	if input_schema.has(JSKW_PROP_ADD):
 		match typeof(input_schema.additionalProperties):
@@ -325,7 +326,7 @@ func _validate_object(input_data: Dictionary, input_schema: Dictionary, property
 						return _type_selection(JSON.print(input_data[key]), input_schema.additionalProperties, key)
 			_:
 				return ERR_WRONG_SCHEMA_GEN + ERR_TYPE_MISMATCH_GEN % [JSL_OR % [JST_BOOLEAN, JSM_OBJ_DICT], property_name]
-	
+
 	# Process properties names
 	if input_schema.has(JSKW_PROP_NAMES):
 		if typeof(input_schema.propertyNames) != TYPE_DICTIONARY:
@@ -333,37 +334,37 @@ func _validate_object(input_data: Dictionary, input_schema: Dictionary, property
 		for key in input_data:
 			error = _validate_string(key, input_schema.propertyNames, key)
 			if error: return error
-	
+
 	# Process minProperties maxProperties
 	if input_schema.has(JSKW_PROP_MIN):
 		if typeof(input_schema[JSKW_PROP_MIN]) != TYPE_REAL:
 			return ERR_WRONG_SCHEMA_GEN + ERR_TYPE_MISMATCH_GEN % [JST_INTEGER, property_name]
 		if input_data.keys().size() < input_schema[JSKW_PROP_MIN]:
 			return ERR_FEW_PROP % [input_data.keys().size(), input_schema[JSKW_PROP_MIN]]
-	
+
 	if input_schema.has(JSKW_PROP_MAX):
 		if typeof(input_schema[JSKW_PROP_MAX]) != TYPE_REAL:
 			return ERR_WRONG_SCHEMA_GEN + ERR_TYPE_MISMATCH_GEN % [JST_INTEGER, property_name]
 		if input_data.keys().size() > input_schema[JSKW_PROP_MAX]:
 			return ERR_MORE_PROP % [input_data.keys().size(), input_schema[JSKW_PROP_MAX]]
-	
+
 	return error
 
 func _validate_string(input_data: String, input_schema: Dictionary, property_name: String = DEF_KEY_NAME) -> String:
-	# TODO: format 
+	# TODO: format
 	var error : String = ""
 	if input_schema.has(JSKW_LENGTH_MIN):
 		if not (typeof(input_schema[JSKW_LENGTH_MIN]) == TYPE_INT || typeof(input_schema[JSKW_LENGTH_MIN]) == TYPE_REAL):
 			return ERR_TYPE_MISMATCH_GEN % [JST_INTEGER, property_name+"."+JSKW_LENGTH_MIN]
 		if input_data.length() < input_schema[JSKW_LENGTH_MIN]:
 			return ERR_INVALID_JSON_GEN % ERR_RANGE_S % [property_name, input_data.length(), JSM_LESS ,input_schema[JSKW_LENGTH_MIN]]
-	
+
 	if input_schema.has(JSKW_LENGTH_MAX):
 		if not (typeof(input_schema[JSKW_LENGTH_MAX]) == TYPE_INT || typeof(input_schema[JSKW_LENGTH_MAX]) == TYPE_REAL):
 			return ERR_TYPE_MISMATCH_GEN % [JST_INTEGER, property_name+"."+JSKW_LENGTH_MAX]
 		if input_data.length() > input_schema[JSKW_LENGTH_MAX]:
 			return ERR_INVALID_JSON_GEN % ERR_RANGE_S % [property_name, input_data.length(), JSM_GREATER, input_schema[JSKW_LENGTH_MAX]]
-	
+
 	if input_schema.has(JSKW_PATTERN):
 		if not (typeof(input_schema[JSKW_PATTERN]) == TYPE_STRING):
 			return ERR_TYPE_MISMATCH_GEN % [JST_STRING, property_name+"."+JSKW_PATTERN]
@@ -371,5 +372,5 @@ func _validate_string(input_data: String, input_schema: Dictionary, property_nam
 		regex.compile(input_schema[JSKW_PATTERN])
 		if regex.search(input_data) == null:
 			return ERR_INVALID_JSON_GEN % ERR_WRONG_PATTERN % property_name
-	
+
 	return error
