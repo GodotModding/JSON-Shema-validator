@@ -1,7 +1,11 @@
+class_name JSONSchema
+extends Reference
+
+
 # JSON Schema main script
 # Inherits from Reference for easy use
 
-class_name JSONSchema extends Reference
+const SMALL_FLOAT_THRESHOLD = 0.001
 
 const DEF_KEY_NAME = "schema root"
 const DEF_ERROR_STRING = "##error##"
@@ -68,6 +72,8 @@ const ERR_MORE_PROP = "%d propertie(s) are too many properties, at most %d are a
 const ERR_INVALID_JSON_GEN = "Validation fails with message: %s"
 const ERR_INVALID_JSON_EXT = "Invalid JSON data passed with message: %s"
 const ERR_TYPE_MISMATCH_GEN = "Type mismatch: expected %s for '%s'"
+const ERR_INVALID_NUMBER = "Key %s that equals %s must be greater or equal to %s"
+const ERR_INVALID_MULT = "Multiplier in key %s that equals %s must be greater or equal to %s"
 const ERR_MULT_D = "Key %s that equal %d must be multiple of %d"
 const ERR_MULT_F = "Key %s that equal %f must be multiple of %f"
 const ERR_RANGE_D = "Key %s that equal %d must be %s than %d"
@@ -198,17 +204,39 @@ func _validate_null(input_data, input_schema: Dictionary, property_name: String 
 	return ""
 
 func _validate_number(input_data: float, input_schema: Dictionary, property_name: String = DEF_KEY_NAME) -> String:
-
 	var types: Array = _var_to_array(input_schema.type)
 	# integer mode turns on only if types has integer and has not number
 	var integer_mode: bool = types.has(JST_INTEGER) && !types.has(JST_NUMBER)
 
-	# processing multiple check
+	# Check if smaller then SMALL_FLOAT_THRESHOLD
+	if not input_data >= SMALL_FLOAT_THRESHOLD:
+		return ERR_INVALID_NUMBER % [property_name, input_data, str(SMALL_FLOAT_THRESHOLD)]
+
+	# Processing multiple check
 	if input_schema.has(JSKW_MULT_OF):
-		var mult = float(input_schema[JSKW_MULT_OF])
+		var mult: float
+		var mod: float
+		var is_zero: bool
+
+		# Get the multipleOf value from the schema and convert to float
+		mult = float(input_schema[JSKW_MULT_OF])
+		# Convert to integer if integer_mode is enabled
 		mult = int(mult) if integer_mode else mult
-		var mod := fmod(input_data, mult)
-		var is_zero := is_zero_approx(mod)
+
+		# Check if multipleOf is smaller than SMALL_FLOAT_THRESHOLD
+		if not mult >= SMALL_FLOAT_THRESHOLD:
+			return ERR_INVALID_MULT % [property_name, mult, str(SMALL_FLOAT_THRESHOLD)]
+
+		# Multiply by a big number if input is smaller than 1 to prevent float issues
+		if input_data < 1.0 or mult < 1.0:
+			mod = fmod(input_data * 1000, mult * 1000)
+		else:
+			mod = fmod(input_data, mult)
+
+		# Check if the remainder is close to zero
+		is_zero = is_zero_approx(mod)
+
+		# Return error message if remainder is not close to zero
 		if not is_zero:
 			if integer_mode:
 				return ERR_MULT_D % [property_name, input_data, mult]
