@@ -28,6 +28,7 @@ const JSKW_EXAMPLES = "examples"
 const JSKW_COMMENT = "$comment"
 const JSKW_ENUM = "enum"
 const JSKW_CONST = "const"
+const JSKW_PREFIX_ITEMS = "prefixItems"
 const JSKW_ITEMS = "items"
 const JSKW_CONTAINS = "contains"
 const JSKW_ADD_ITEMS = "additionalItems"
@@ -170,9 +171,59 @@ func _var_to_array(variant) -> Array:
 	return result
 
 func _validate_array(input_data: Array, input_schema: Dictionary, property_name: String = DEF_KEY_NAME) -> String:
-	# TODO: contains additionalItems minItems maxItems uniqueItems
-	var error : String = ""
-	var items_array : Array
+	# TODO: contains minItems maxItems uniqueItems
+
+	# Initialize variables
+	var error : String = "" # Variable to store any error messages
+	var items_array : Array # Array of items in the schema
+	var suberror : Array = [] # Array of suberrors in each item
+	var additional_items_schema: Dictionary # Schema for additional items in the input data
+	var is_additional_item_allowed: bool # Flag to check if additional items are allowed
+
+	# Check if prefixItems key exists in the schema
+	if input_schema.has(JSKW_PREFIX_ITEMS):
+		# Check if items key exists in the schema
+		if not input_schema.has(JSKW_ITEMS):
+			return ERR_REQ_PROP_MISSING % [JSKW_ITEMS, JSKW_PREFIX_ITEMS]
+
+		# Check if items key is only a boolean value
+		if typeof(input_schema.items) == TYPE_BOOL:
+			# Check if additional items in the input data are allowed
+			if input_schema.items == false:
+				# Check if there are more items in the input data than specified in prefixItems
+				if input_data.size() > input_schema.prefixItems.size():
+					# Create an error message if there are more items than allowed
+					var substr := "Array '%s' is of size %s but no addition items allowed." % [input_data, input_data.size()]
+					return ERR_INVALID_JSON_GEN % substr
+
+		# Check if items key is a dictionary
+		if typeof(input_schema.items) == TYPE_DICTIONARY:
+			# Any items after the specified ones in prefixItems have to be validated with this schema
+			# Set the schema for additional array items
+			additional_items_schema = input_schema.items
+
+		# Check if all entries in prefixItems are a dictionary
+		for schema in input_schema.prefixItems:
+			if typeof(schema) != TYPE_DICTIONARY:
+				return ERR_WRONG_SHEMA_NOTA % [property_name, JSKW_ITEMS, JST_OBJECT]
+
+		# Check every item in the input data
+		for index in input_data.size():
+			var item = input_data[index]
+
+			# As long as there are prefixItems in the array work with those
+			if index <= input_schema.prefixItems.size():
+				suberror.append(_type_selection(JSON.print(item), input_schema.prefixItems[index], property_name + ".prefixItems" + "["+String(index)+"]"))
+				continue
+			# After that use the items schema
+			suberror.append(_type_selection(JSON.print(item), additional_items_schema, property_name + ".prefixItems" + "["+String(index)+"]"))
+
+		# At least one returned string must be correct (empty). If no one present, it's wrong.
+		if suberror.find("") < 0:
+			# Return error message if no empty string is found in suberror array
+			return ERR_INVALID_JSON_GEN % String(suberror)
+
+		return error
 
 	#'items' must be object or Array of objects
 	if input_schema.has(JSKW_ITEMS):
@@ -183,7 +234,6 @@ func _validate_array(input_data: Array, input_schema: Dictionary, property_name:
 
 	# Check every item of input Array on
 	for idx in input_data.size():
-		var suberror : Array = []
 		for subschema in items_array:
 			suberror.append(_type_selection(JSON.print(input_data[idx]), subschema, property_name+"["+String(idx)+"]"))
 		if suberror.find("") < 0: # At least one returned string must be correct (empty). If no one present, it's wrong.
