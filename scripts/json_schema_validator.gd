@@ -119,16 +119,28 @@ func _to_string():
 
 # TODO: title, description, default, examples, $comment, enum, const
 func _type_selection(json_data: String, schema: Dictionary, key: String = DEF_KEY_NAME) -> String:
-	var typearr : Array = _var_to_array(schema.type)
+	# If the schema is an empty object it always passes validation
+	if schema.empty():
+		return ""
+
+	if typeof(schema) == TYPE_BOOL:
+		# If the schema is true it always passes validation
+		if schema:
+			return ""
+		# If the schema is false it always vales validation
+		else:
+			return ERR_INVALID_JSON_GEN + "false is always invalid"
+
+	var typearr: Array = _var_to_array(schema.type)
 	var parsed_data = parse_json(json_data)
-	var error : String = ERR_TYPE_MISMATCH_GEN % [typearr, key]
+	var error: String = ERR_TYPE_MISMATCH_GEN % [typearr, key]
 	for type in typearr:
 		match type:
 			JST_ARRAY:
 				if typeof(parsed_data) == TYPE_ARRAY:
 					error = _validate_array(parsed_data, schema, key)
-#				else:
-#					error = ERR_TYPE_MISMATCH_GEN % [[JST_ARRAY], key]
+				else:
+					error = ERR_TYPE_MISMATCH_GEN % [[JST_ARRAY], key]
 			JST_BOOLEAN:
 				if typeof(parsed_data) != TYPE_BOOL:
 					return ERR_TYPE_MISMATCH_GEN % [[JST_BOOLEAN], key]
@@ -147,18 +159,18 @@ func _type_selection(json_data: String, schema: Dictionary, key: String = DEF_KE
 			JST_NUMBER:
 				if typeof(parsed_data) == TYPE_REAL:
 					error = _validate_number(parsed_data, schema, key)
-#				else:
-#					error = ERR_TYPE_MISMATCH_GEN % [[JST_NUMBER], key]
+				else:
+					error = ERR_TYPE_MISMATCH_GEN % [[JST_NUMBER], key]
 			JST_OBJECT:
 				if typeof(parsed_data) == TYPE_DICTIONARY:
 					error = _validate_object(parsed_data, schema, key)
-#				else:
-#					error = ERR_TYPE_MISMATCH_GEN % [[JST_OBJECT], key]
+				else:
+					error = ERR_TYPE_MISMATCH_GEN % [[JST_OBJECT], key]
 			JST_STRING:
 				if typeof(parsed_data) == TYPE_STRING:
 					error = _validate_string(parsed_data, schema, key)
-#				else:
-#					error = ERR_TYPE_MISMATCH_GEN % [[JST_STRING], key]
+				else:
+					error = ERR_TYPE_MISMATCH_GEN % [[JST_STRING], key]
 	return error
 
 
@@ -186,7 +198,10 @@ func _validate_array(input_data: Array, input_schema: Dictionary, property_name:
 		if not input_schema.has(JSKW_ITEMS):
 			return ERR_REQ_PROP_MISSING % [JSKW_ITEMS, JSKW_PREFIX_ITEMS]
 
-		# Check if items key is only a boolean value
+		# Return error if items key is not a bool or a dictionary
+		if not typeof(input_schema.items) == TYPE_DICTIONARY and not typeof(input_schema.items) == TYPE_BOOL:
+			return ERR_WRONG_SCHEMA_TYPE
+
 		if typeof(input_schema.items) == TYPE_BOOL:
 			# Check if additional items in the input data are allowed
 			if input_schema.items == false:
@@ -195,6 +210,9 @@ func _validate_array(input_data: Array, input_schema: Dictionary, property_name:
 					# Create an error message if there are more items than allowed
 					var substr := "Array '%s' is of size %s but no addition items allowed." % [input_data, input_data.size()]
 					return ERR_INVALID_JSON_GEN % substr
+			# If the 'items' key is set to true all types are allowed for addition items.
+			else:
+				additional_items_schema = {}
 
 		# Check if items key is a dictionary
 		if typeof(input_schema.items) == TYPE_DICTIONARY:
@@ -210,34 +228,45 @@ func _validate_array(input_data: Array, input_schema: Dictionary, property_name:
 		# Check every item in the input data
 		for index in input_data.size():
 			var item = input_data[index]
+			var current_schema: Dictionary
+			var key_substr: String
 
-			# As long as there are prefixItems in the array work with those
-			if index <= input_schema.prefixItems.size():
-				suberror.append(_type_selection(JSON.print(item), input_schema.prefixItems[index], property_name + ".prefixItems" + "["+String(index)+"]"))
-				continue
-			# After that use the items schema
-			suberror.append(_type_selection(JSON.print(item), additional_items_schema, property_name + ".prefixItems" + "["+String(index)+"]"))
+			if index <= input_schema.prefixItems.size() - 1:
+				# As long as there are prefixItems in the array work with those
+				current_schema = input_schema.prefixItems[index]
+				key_substr = ".prefixItems"
+			else:
+				# After that use the items schema
+				current_schema = additional_items_schema
+				key_substr = ".items"
 
-		# At least one returned string must be correct (empty). If no one present, it's wrong.
-		if suberror.find("") < 0:
-			# Return error message if no empty string is found in suberror array
+			var sub_error_message := _type_selection(JSON.print(item), current_schema, property_name + key_substr + "["+String(index)+"]")
+			if not sub_error_message == "":
+				suberror.append(sub_error_message)
+
+		if suberror.size() > 0:
 			return ERR_INVALID_JSON_GEN % String(suberror)
 
+		# Return inside this if block, because we don't want to validate the items key twice.
 		return error
 
-	#'items' must be object or Array of objects
+	# Check if items key exists in the schema
 	if input_schema.has(JSKW_ITEMS):
-		items_array = _var_to_array(input_schema.items)
-		for item in items_array:
-			if typeof(item) != TYPE_DICTIONARY:
-				return ERR_WRONG_SHEMA_NOTA % [property_name, JSKW_ITEMS, JST_OBJECT]
+		#'items' must be an object
+		if not typeof(input_schema.items) == TYPE_DICTIONARY:
+			return ERR_WRONG_SHEMA_NOTA % [property_name, JSKW_ITEMS, JST_OBJECT]
 
-	# Check every item of input Array on
-	for idx in input_data.size():
-		for subschema in items_array:
-			suberror.append(_type_selection(JSON.print(input_data[idx]), subschema, property_name+"["+String(idx)+"]"))
-		if suberror.find("") < 0: # At least one returned string must be correct (empty). If no one present, it's wrong.
-			return ERR_INVALID_JSON_GEN % String(suberror) # Then we post all suberror array for a maintenance.
+		# Check every item of input Array on
+		for index in input_data.size():
+			index = index - 1
+
+			# Validate the array item with the schema defined by the 'items' key
+			var sub_error_message := _type_selection(JSON.print(input_data[index]), input_schema.items, property_name+"["+String(index)+"]")
+			if not sub_error_message == "":
+				suberror.append(sub_error_message)
+
+			if suberror.size() > 0:
+				return ERR_INVALID_JSON_GEN % String(suberror)
 
 	return error
 
@@ -258,10 +287,6 @@ func _validate_number(input_data: float, input_schema: Dictionary, property_name
 	# integer mode turns on only if types has integer and has not number
 	var integer_mode: bool = types.has(JST_INTEGER) && !types.has(JST_NUMBER)
 
-	# Check if smaller then SMALL_FLOAT_THRESHOLD
-	if not input_data >= SMALL_FLOAT_THRESHOLD:
-		return ERR_INVALID_NUMBER % [property_name, input_data, str(SMALL_FLOAT_THRESHOLD)]
-
 	# Processing multiple check
 	if input_schema.has(JSKW_MULT_OF):
 		var mult: float
@@ -272,6 +297,10 @@ func _validate_number(input_data: float, input_schema: Dictionary, property_name
 		mult = float(input_schema[JSKW_MULT_OF])
 		# Convert to integer if integer_mode is enabled
 		mult = int(mult) if integer_mode else mult
+
+		# Check if smaller then SMALL_FLOAT_THRESHOLD
+		if not input_data >= SMALL_FLOAT_THRESHOLD:
+			return ERR_INVALID_NUMBER % [property_name, input_data, str(SMALL_FLOAT_THRESHOLD)]
 
 		# Check if multipleOf is smaller than SMALL_FLOAT_THRESHOLD
 		if not mult >= SMALL_FLOAT_THRESHOLD:
