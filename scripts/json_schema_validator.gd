@@ -30,10 +30,10 @@ const JSKW_ENUM = "enum"
 const JSKW_CONST = "const"
 const JSKW_PREFIX_ITEMS = "prefixItems"
 const JSKW_ITEMS = "items"
-const JSKW_CONTAINS = "contains"
-const JSKW_ADD_ITEMS = "additionalItems"
 const JSKW_MIN_ITEMS = "minItems"
 const JSKW_MAX_ITEMS = "maxItems"
+const JSKW_CONTAINS = "contains"
+const JSKW_ADD_ITEMS = "additionalItems"
 const JSKW_UNIQUE_ITEMS = "uniqueItems"
 const JSKW_MULT_OF = "multipleOf"
 const JSKW_MINIMUM = "minimum"
@@ -70,6 +70,8 @@ const ERR_REQ_PROP_MISSING = "Missing required property: '%s' for '%s'"
 const ERR_NO_PROP_ADD = "Additional properties are not required: found '%s'"
 const ERR_FEW_PROP = "%d propertie(s) are not enough properties, at least %d are required"
 const ERR_MORE_PROP = "%d propertie(s) are too many properties, at most %d are allowed"
+const ERR_FEW_ITEMS = "%s item(s) are not enough items, at least %s are required"
+const ERR_MORE_ITEMS = "%s item(s) are too many items, at most %s are allowed"
 const ERR_INVALID_JSON_GEN = "Validation fails with message: %s"
 const ERR_INVALID_JSON_EXT = "Invalid JSON data passed with message: %s"
 const ERR_TYPE_MISMATCH_GEN = "Type mismatch: expected %s for '%s'"
@@ -183,7 +185,7 @@ func _var_to_array(variant) -> Array:
 	return result
 
 func _validate_array(input_data: Array, input_schema: Dictionary, property_name: String = DEF_KEY_NAME) -> String:
-	# TODO: contains minItems maxItems uniqueItems
+	# TODO: contains minContains maxContains uniqueItems
 
 	# Initialize variables
 	var error : String = "" # Variable to store any error messages
@@ -191,6 +193,24 @@ func _validate_array(input_data: Array, input_schema: Dictionary, property_name:
 	var suberror : Array = [] # Array of suberrors in each item
 	var additional_items_schema: Dictionary # Schema for additional items in the input data
 	var is_additional_item_allowed: bool # Flag to check if additional items are allowed
+
+	# Check if minItems key exists in the schema
+	if input_schema.has(JSKW_MIN_ITEMS):
+		# Check if non negative number
+		if input_schema.minItems < 0:
+			return ERR_WRONG_SCHEMA_GEN + "minItems must be a non-negative number."
+
+		if input_data.size() < input_schema.minItems:
+			return ERR_FEW_ITEMS % [input_data.size(), input_schema.minItems]
+
+	# Check if maxItems key exists in the schema
+	if input_schema.has(JSKW_MAX_ITEMS):
+			# Check if non negative number
+			if input_schema.maxItems < 0:
+				return ERR_WRONG_SCHEMA_GEN + "minItems must be a non-negative number."
+
+			if input_data.size() > input_schema.maxItems:
+				return ERR_MORE_ITEMS % [input_data.size(), input_schema.maxItems]
 
 	# Check if prefixItems key exists in the schema
 	if input_schema.has(JSKW_PREFIX_ITEMS):
