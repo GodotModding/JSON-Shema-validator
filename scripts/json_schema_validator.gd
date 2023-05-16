@@ -50,6 +50,7 @@ const JSKW_LENGTH_MIN = "minLength"
 const JSKW_LENGTH_MAX = "maxLength"
 const JSKW_PATTERN = "pattern"
 const JSKW_FORMAT = "format"
+const JSKW_COLOR = "color"
 
 const JSM_GREATER = "greater"
 const JSM_GREATER_EQ = "greater or equal"
@@ -83,6 +84,7 @@ const ERR_RANGE_D = "Key %s that equal %d must be %s than %d"
 const ERR_RANGE_F = "Key %s that equal %f must be %s than %f"
 const ERR_RANGE_S = "Length of '%s' (%d) %s than declared (%d)"
 const ERR_WRONG_PATTERN = "String '%s' does not match its corresponding pattern"
+const ERR_FORMAT = "String '%s' does not match its corresponding format '%s'"
 
 # This is one and only function that need you to call outside
 # If all validation checks passes, this return empty String
@@ -499,5 +501,11 @@ func _validate_string(input_data: String, input_schema: Dictionary, property_nam
 		regex.compile(input_schema[JSKW_PATTERN])
 		if regex.search(input_data) == null:
 			return ERR_INVALID_JSON_GEN % ERR_WRONG_PATTERN % property_name
+
+	if input_schema.has(JSKW_FORMAT):
+		# validate "color" format
+		if input_schema.format.to_lower() == JSKW_COLOR:
+			if not input_data.is_valid_html_color():
+				return ERR_INVALID_JSON_GEN % ERR_FORMAT % [property_name, JSKW_COLOR]
 
 	return error
