@@ -6,6 +6,7 @@ extends Reference
 # Inherits from Reference for easy use
 
 const SMALL_FLOAT_THRESHOLD = 0.001
+const MAX_DECIMAL_PLACES = 3
 
 const DEF_KEY_NAME = "schema root"
 const DEF_ERROR_STRING = "##error##"
@@ -76,7 +77,7 @@ const ERR_MORE_ITEMS = "%s item(s) are too many items, at most %s are allowed"
 const ERR_INVALID_JSON_GEN = "Validation fails with message: %s"
 const ERR_INVALID_JSON_EXT = "Invalid JSON data passed with message: %s"
 const ERR_TYPE_MISMATCH_GEN = "Type mismatch: expected %s for '%s'"
-const ERR_INVALID_NUMBER = "Key %s that equals %s must be greater or equal to %s"
+const ERR_INVALID_NUMBER = "The %s key that equals %s should have a maximum of %s decimal places"
 const ERR_INVALID_MULT = "Multiplier in key %s that equals %s must be greater or equal to %s"
 const ERR_MULT_D = "Key %s that equal %d must be multiple of %d"
 const ERR_MULT_F = "Key %s that equal %f must be multiple of %f"
@@ -320,9 +321,10 @@ func _validate_number(input_data: float, input_schema: Dictionary, property_name
 		# Convert to integer if integer_mode is enabled
 		mult = int(mult) if integer_mode else mult
 
-		# Check if smaller then SMALL_FLOAT_THRESHOLD
-		if not input_data >= SMALL_FLOAT_THRESHOLD:
-			return ERR_INVALID_NUMBER % [property_name, input_data, str(SMALL_FLOAT_THRESHOLD)]
+		# Check if the number has more decimal places then allowed
+		var decimal_places := str(input_data).get_slice('.', 1)
+		if not decimal_places.empty() and decimal_places.length() > MAX_DECIMAL_PLACES:
+			return ERR_INVALID_NUMBER % [property_name, input_data, str(MAX_DECIMAL_PLACES)]
 
 		# Check if multipleOf is smaller than SMALL_FLOAT_THRESHOLD
 		if not mult >= SMALL_FLOAT_THRESHOLD:
