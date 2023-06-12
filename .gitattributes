@@ -1,0 +1,9 @@
+# Git stuff
+/README.md                              export-ignore
+/.gitattributes                         export-ignore
+
+# Tests
+test/                                   export-ignore
+
+# Files not required by the ModLoader
+scripts/json_file.gd                    export-ignore
