@@ -214,3 +214,118 @@ func test_validate(params = use_parameters(test_is_json_valid_params)) -> void:
 		result == expected_result,
 		"Expected %s but was %s instead for json_data \"%s\" with json_schema \"%s\" and error: %s " % [expected_result, result, json_data, json_schema, error]
 	)
+
+
+var test_enum_params = [
+	["green", {"enum": ["red", "blue", "green"]}, true],
+	# number enum match
+	[2, {"type":"number","enum":[1,2,3]}, true],
+	# number enum no match
+	[4, {"type":"number","enum":[1,2,3]}, false],
+	# string enum match
+	["red", {"type":"string","enum":["red","green"]}, true],
+	# string enum no match
+	["blue", {"type":"string","enum":["red","green"]}, false],
+	# object enum match (deep equality)
+	[{"b":2}, {"type":"object","enum":[{"a":1},{"b":2}]}, true],
+	# object enum no match
+	[{"a":1}, {"type":"object","enum":[{"a":2}]}, false],
+	# array enum match
+	[[1,2], {"type":"array","enum":[[1,2],[3,4]]}, true],
+	# invalid enum schema (not an array) should produce schema error -> treated as failure
+	[1, {"enum":"notarray"}, false],
+]
+
+
+func test_enum_validate(params = use_parameters(test_enum_params)) -> void:
+	# prepare
+	var json_data = JSON.print(params[0])
+	var json_schema = JSON.print(params[1])
+	var expected_result = params[2]
+
+	# test
+	var json_schema_validator = JSONSchema.new()
+	var error = json_schema_validator.validate(json_data, json_schema)
+
+	var result = error == ""
+
+	# validate
+	assert_true(
+		result == expected_result,
+		"Expected %s but was %s instead for json_data \"%s\" with json_schema \"%s\" and error: %s " % [expected_result, result, json_data, json_schema, error]
+	)
+
+
+var test_enum_edge_params = [
+	["2", {"type":"string", "enum":["small", "medium", "large"]}, false],
+	# empty enum array -> nothing matches
+	[1, {"enum":[]}, false],
+	# null in enum should match null
+	[null, {"enum":[null, "a"]}, true],
+	# boolean enum
+	[true, {"enum":[false, true]}, true],
+	# mixed-type enum (string vs number) - string "1" should match
+	["1", {"enum":[1, "1"]}, true],
+	# array no match
+	[[1,2,3], {"type":"array","enum":[[1,2]]}, false],
+]
+
+
+func test_enum_edge_validate(params = use_parameters(test_enum_edge_params)) -> void:
+	# prepare
+	var json_data = JSON.print(params[0])
+	var json_schema = JSON.print(params[1])
+	var expected_result = params[2]
+
+	# test
+	var json_schema_validator = JSONSchema.new()
+	var error = json_schema_validator.validate(json_data, json_schema)
+
+	var result = error == ""
+
+	# validate
+	assert_true(
+		result == expected_result,
+		"Expected %s but was %s instead for json_data \"%s\" with json_schema \"%s\" and error: %s " % [expected_result, result, json_data, json_schema, error]
+	)
+
+
+var test_object_edge_params = [
+	# additionalProperties false with extra property -> fail
+	[{"a":"x","b":"y"}, {"type":"object","properties":{"a":{"type":"string"}},"additionalProperties":false}, false],
+	# additionalProperties as schema -> extra prop validated by schema
+	[{"a":"x","b":2}, {"type":"object","properties":{"a":{"type":"string"}},"additionalProperties":{"type":"number"}}, true],
+	# required property missing -> fail
+	[{}, {"type":"object","properties":{"a":{"type":"string"}},"required":["a"]}, false],
+	# propertyNames pattern matching key names
+	[{"foo":"bar"}, {"type":"object","propertyNames":{"pattern":"^foo$"}}, true],
+	[{"bar":"baz"}, {"type":"object","propertyNames":{"pattern":"^foo$"}}, false],
+	# string minLength
+	["abc", {"type":"string","minLength":2}, true],
+	["a", {"type":"string","minLength":2}, false],
+	# multipleOf with float
+	[0.5, {"type":"number","multipleOf":0.25}, true],
+	[0.3, {"type":"number","multipleOf":0.25}, false],
+	# exclusiveMinimum
+	[5, {"type":"number","exclusiveMinimum":5}, false],
+	[6, {"type":"number","exclusiveMinimum":5}, true],
+]
+
+
+func test_object_edge_validate(params = use_parameters(test_object_edge_params)) -> void:
+	# prepare
+	var json_data = JSON.print(params[0])
+	var json_schema = JSON.print(params[1])
+	var expected_result = params[2]
+
+	# test
+	var json_schema_validator = JSONSchema.new()
+	var error = json_schema_validator.validate(json_data, json_schema)
+
+	var result = error == ""
+
+	# validate
+	assert_true(
+		result == expected_result,
+		"Expected %s but was %s instead for json_data \"%s\" with json_schema \"%s\" and error: %s " % [expected_result, result, json_data, json_schema, error]
+	)

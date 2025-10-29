@@ -86,6 +86,7 @@ const ERR_RANGE_F = "Key %s that equal %f must be %s than %f"
 const ERR_RANGE_S = "Length of '%s' (%d) %s than declared (%d)"
 const ERR_WRONG_PATTERN = "String '%s' does not match its corresponding pattern"
 const ERR_FORMAT = "String '%s' does not match its corresponding format '%s'"
+const ERR_ENUM = "Value %s is not one of the allowed enum values for '%s'"
 
 # This is one and only function that need you to call outside
 # If all validation checks passes, this return empty String
@@ -109,7 +110,11 @@ func validate(json_data : String, schema: String) -> String:
 		TYPE_DICTIONARY:
 			if parsed_schema.empty():
 				return ""
-			elif parsed_schema.keys().size() > 0 && !parsed_schema.has(JSKW_TYPE):
+			elif (
+				parsed_schema.keys().size() > 0 and
+				not parsed_schema.has(JSKW_TYPE) and
+				not parsed_schema.has(JSKW_ENUM)
+			):
 				return ERR_WRONG_SCHEMA_TYPE
 		_: return ERR_WRONG_SCHEMA_TYPE
 
@@ -136,46 +141,53 @@ func _type_selection(json_data: String, schema: Dictionary, key: String = DEF_KE
 		else:
 			return ERR_INVALID_JSON_GEN + "false is always invalid"
 
-	var typearr: Array = _var_to_array(schema.type)
 	var parsed_data = parse_json(json_data)
-	var error: String = ERR_TYPE_MISMATCH_GEN % [typearr, key]
-	for type in typearr:
-		match type:
-			JST_ARRAY:
-				if typeof(parsed_data) == TYPE_ARRAY:
-					error = _validate_array(parsed_data, schema, key)
-				else:
-					error = ERR_TYPE_MISMATCH_GEN % [[JST_ARRAY], key]
-			JST_BOOLEAN:
-				if typeof(parsed_data) != TYPE_BOOL:
-					return ERR_TYPE_MISMATCH_GEN % [[JST_BOOLEAN], key]
-				else:
-					error = ""
-			JST_INTEGER:
-				if typeof(parsed_data) == TYPE_INT:
-					error = _validate_integer(parsed_data, schema, key)
-				if typeof(parsed_data) == TYPE_REAL && parsed_data == int(parsed_data):
-					error = _validate_integer(int(parsed_data), schema, key)
-			JST_NULL:
-				if typeof(parsed_data) != TYPE_NIL:
-					return ERR_TYPE_MISMATCH_GEN % [[JST_NULL], key]
-				else:
-					error = ""
-			JST_NUMBER:
-				if typeof(parsed_data) == TYPE_REAL:
-					error = _validate_number(parsed_data, schema, key)
-				else:
-					error = ERR_TYPE_MISMATCH_GEN % [[JST_NUMBER], key]
-			JST_OBJECT:
-				if typeof(parsed_data) == TYPE_DICTIONARY:
-					error = _validate_object(parsed_data, schema, key)
-				else:
-					error = ERR_TYPE_MISMATCH_GEN % [[JST_OBJECT], key]
-			JST_STRING:
-				if typeof(parsed_data) == TYPE_STRING:
-					error = _validate_string(parsed_data, schema, key)
-				else:
-					error = ERR_TYPE_MISMATCH_GEN % [[JST_STRING], key]
+	var error: String
+
+	if schema.has(JSKW_TYPE):
+		var typearr: Array = _var_to_array(schema.type)
+		error = ERR_TYPE_MISMATCH_GEN % [typearr, key]
+		for type in typearr:
+			match type:
+				JST_ARRAY:
+					if typeof(parsed_data) == TYPE_ARRAY:
+						error = _validate_array(parsed_data, schema, key)
+					else:
+						error = ERR_TYPE_MISMATCH_GEN % [[JST_ARRAY], key]
+				JST_BOOLEAN:
+					if typeof(parsed_data) != TYPE_BOOL:
+						return ERR_TYPE_MISMATCH_GEN % [[JST_BOOLEAN], key]
+					else:
+						error = ""
+				JST_INTEGER:
+					if typeof(parsed_data) == TYPE_INT:
+						error = _validate_integer(parsed_data, schema, key)
+					if typeof(parsed_data) == TYPE_REAL && parsed_data == int(parsed_data):
+						error = _validate_integer(int(parsed_data), schema, key)
+				JST_NULL:
+					if typeof(parsed_data) != TYPE_NIL:
+						return ERR_TYPE_MISMATCH_GEN % [[JST_NULL], key]
+					else:
+						error = ""
+				JST_NUMBER:
+					if typeof(parsed_data) == TYPE_REAL:
+						error = _validate_number(parsed_data, schema, key)
+					else:
+						error = ERR_TYPE_MISMATCH_GEN % [[JST_NUMBER], key]
+				JST_OBJECT:
+					if typeof(parsed_data) == TYPE_DICTIONARY:
+						error = _validate_object(parsed_data, schema, key)
+					else:
+						error = ERR_TYPE_MISMATCH_GEN % [[JST_OBJECT], key]
+				JST_STRING:
+					if typeof(parsed_data) == TYPE_STRING:
+						error = _validate_string(parsed_data, schema, key)
+					else:
+						error = ERR_TYPE_MISMATCH_GEN % [[JST_STRING], key]
+
+	if schema.has(JSKW_ENUM):
+		error = _validate_enum(parsed_data, schema, key)
+
 	return error
 
 
@@ -511,3 +523,33 @@ func _validate_string(input_data: String, input_schema: Dictionary, property_nam
 				return ERR_INVALID_JSON_GEN % ERR_FORMAT % [property_name, JSKW_COLOR]
 
 	return error
+
+
+func _enum_match(value, enum_item) -> bool:
+	var value_type = typeof(value)
+	var enum_type = typeof(enum_item)
+
+	# Dicts are compared by reference by default - so we use the dicts hash value here.
+	# (Dictionaries are ordered since Godot 3.0)
+	# (If hash collisions are an actual issue we have to write a comparison util).
+	if value_type == TYPE_DICTIONARY and enum_type == TYPE_DICTIONARY:
+		return value.hash() == enum_item.hash()
+
+	if not value_type == enum_type:
+		return false
+
+	return value == enum_item
+
+
+func _validate_enum(value, schema: Dictionary, property_name: String = DEF_KEY_NAME) -> String:
+	# enum must be an array
+	if typeof(schema[JSKW_ENUM]) != TYPE_ARRAY:
+		return ERR_WRONG_SCHEMA_GEN + ERR_TYPE_MISMATCH_GEN % [JST_ARRAY, property_name+"."+JSKW_ENUM]
+
+	for item in schema[JSKW_ENUM]:
+		if _enum_match(value, item):
+			return ""
+
+	# Not found in enum
+	var val_str = JSON.print(value)
+	return ERR_INVALID_JSON_GEN % (ERR_ENUM % [val_str, property_name])
